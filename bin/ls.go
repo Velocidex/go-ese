@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -24,12 +25,16 @@ func doLS() {
 	ese_ctx, err := parser.NewESEContext(*ls_command_file_arg, s.Size())
 	kingpin.FatalIfError(err, "Unable to open ese file")
 
-	fmt.Printf("FileHeader: %v\n", ese_ctx.Header.DebugString())
-
 	catalog := parser.ReadCatalog(ese_ctx)
-	catalog.Dump()
+	cursor, err := catalog.OpenTable(ese_ctx, "{5C8CF1C7-7257-4F13-B223-970EF5939312}")
+	kingpin.FatalIfError(err, "Unable to open ese file")
 
-	catalog.DumpTable("MSysObjects")
+	for row := cursor.GetNextRow(); row != nil; {
+		serialized, err := json.Marshal(row)
+		if err == nil {
+			fmt.Printf("%v\n", string(serialized))
+		}
+	}
 }
 
 func init() {
