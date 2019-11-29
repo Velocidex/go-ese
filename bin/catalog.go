@@ -9,34 +9,31 @@ import (
 )
 
 var (
-	ls_command = app.Command(
-		"ls", "List files.")
-
-	ls_command_file_arg = ls_command.Arg(
+	catalog_command = app.Command(
+		"catalog", "Dump the catalog")
+	catalog_command_file_arg = catalog_command.Arg(
 		"file", "The image file to inspect",
 	).Required().OpenFile(os.O_RDONLY, os.FileMode(0666))
 )
 
-func doLS() {
-	s, err := (*ls_command_file_arg).Stat()
+func doCatalog() {
+	s, err := (*catalog_command_file_arg).Stat()
 	kingpin.FatalIfError(err, "Unable to open ese file")
 
-	ese_ctx, err := parser.NewESEContext(*ls_command_file_arg, s.Size())
+	ese_ctx, err := parser.NewESEContext(*catalog_command_file_arg, s.Size())
 	kingpin.FatalIfError(err, "Unable to open ese file")
 
-	fmt.Printf("FileHeader: %v\n", ese_ctx.Header.DebugString())
-
-	catalog := parser.ReadCatalog(ese_ctx)
-	catalog.Dump()
-
-	catalog.DumpTable("MSysObjects")
+	catalog, err := parser.ReadCatalog(ese_ctx)
+	kingpin.FatalIfError(err, "Unable to open ese file")
+	fmt.Printf(catalog.Dump())
 }
 
 func init() {
 	command_handlers = append(command_handlers, func(command string) bool {
 		switch command {
-		case "ls":
-			doLS()
+		case catalog_command.FullCommand():
+			doCatalog()
+
 		default:
 			return false
 		}
