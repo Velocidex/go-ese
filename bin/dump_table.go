@@ -24,10 +24,7 @@ var (
 )
 
 func doDump() {
-	s, err := (*dump_command_file_arg).Stat()
-	kingpin.FatalIfError(err, "Unable to open ese file")
-
-	ese_ctx, err := parser.NewESEContext(*dump_command_file_arg, s.Size())
+	ese_ctx, err := parser.NewESEContext(*dump_command_file_arg)
 	kingpin.FatalIfError(err, "Unable to open ese file")
 
 	catalog, err := parser.ReadCatalog(ese_ctx)
