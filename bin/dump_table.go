@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -21,6 +22,11 @@ var (
 	dump_command_table_name = dump_command.Arg(
 		"table", "The name of the table to dump").
 		Required().String()
+
+	dump_command_table_name_limit = dump_command.Flag(
+		"limit", "Only dump this many rows").Int()
+
+	STOP_ERROR = errors.New("Stop")
 )
 
 func doDump() {
@@ -30,16 +36,30 @@ func doDump() {
 	catalog, err := parser.ReadCatalog(ese_ctx)
 	kingpin.FatalIfError(err, "Unable to open ese file")
 
+	count := 0
+
 	err = catalog.DumpTable(*dump_command_table_name, func(row *ordereddict.Dict) error {
 		serialized, err := json.Marshal(row)
 		if err != nil {
 			return err
 		}
+
+		count++
 		fmt.Printf("%v\n", string(serialized))
+		if *dump_command_table_name_limit > 0 &&
+			count >= *dump_command_table_name_limit {
+			return STOP_ERROR
+		}
 
 		return nil
 	})
+
+	if err == STOP_ERROR {
+		return
+	}
+
 	kingpin.FatalIfError(err, "Unable to open ese file")
+
 }
 
 func init() {
