@@ -218,6 +218,14 @@ func (self *Table) tagToRecord(value *Value) *ordereddict.Dict {
 						self.Header.Profile.GUID(tag.Reader, offset).AsString())
 				}
 
+			case "Binary":
+				if column.SpaceUsage < 1024 {
+					data := make([]byte, column.SpaceUsage)
+					n, err := tag.Reader.ReadAt(data, offset)
+					if err == nil {
+						result.Set(column.Name, data[:n])
+					}
+				}
 			default:
 				fmt.Printf("Can not handle Column %v fixed data %v\n",
 					column.Name, column)
@@ -297,8 +305,7 @@ func (self *Table) tagToRecord(value *Value) *ordereddict.Dict {
 					result.Set(column.Name, hex.EncodeToString(buf))
 
 				case "Long Text":
-					result.Set(column.Name, ParseTerminatedUTF16String(
-						reader, 0))
+					result.Set(column.Name, ParseLongText(buf))
 
 				case "Boolean":
 					if column.SpaceUsage == 1 {
