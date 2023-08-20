@@ -43,12 +43,16 @@ func Decompress7BitCompression(buf []byte) string {
 	return strings.TrimSuffix(string(result), "\x00")
 }
 
-func ParseLongText(buf []byte) string {
+func ParseLongText(buf []byte, flag uint32) string {
 	if len(buf) < 2 {
 		return ""
 	}
 
-	flag := buf[0]
+	start := 0
+	if flag != 1 {
+		flag = uint32(buf[0])
+		start++
+	}
 
 	// Lzxpress compression - not supported right now.
 	if flag&COMPRESSION != 0 {
@@ -56,7 +60,7 @@ func ParseLongText(buf []byte) string {
 			fmt.Printf("LZXPRESS compression not supported currently\n")
 			return string(buf)
 		}
-		return Decompress7BitCompression(buf[1:])
+		return Decompress7BitCompression(buf[start:])
 	}
-	return ParseTerminatedUTF16String(&BufferReaderAt{buf[1:]}, 0)
+	return ParseTerminatedUTF16String(&BufferReaderAt{buf[start:]}, 0)
 }

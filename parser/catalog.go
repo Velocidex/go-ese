@@ -305,7 +305,9 @@ func (self *Table) tagToRecord(value *Value) *ordereddict.Dict {
 					result.Set(column.Name, hex.EncodeToString(buf))
 
 				case "Long Text":
-					result.Set(column.Name, ParseLongText(buf))
+					// Flags can be given as the first char or in the
+					// column definition.
+					result.Set(column.Name, ParseLongText(buf, column.Flags))
 
 				case "Boolean":
 					if column.SpaceUsage == 1 {
