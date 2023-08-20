@@ -48,11 +48,13 @@ func ParseLongText(buf []byte, flag uint32) string {
 		return ""
 	}
 
+	//fmt.Printf("Record Flag %v\n", flag)
 	start := 0
 	if flag != 1 {
 		flag = uint32(buf[0])
 		start++
 	}
+	//fmt.Printf("Inline Flag %v\n", flag)
 
 	// Lzxpress compression - not supported right now.
 	if flag&COMPRESSION != 0 {
