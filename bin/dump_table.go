@@ -21,7 +21,7 @@ var (
 
 	dump_command_table_name = dump_command.Arg(
 		"table", "The name of the table to dump").
-		Required().String()
+		Strings()
 
 	dump_command_table_name_limit = dump_command.Flag(
 		"limit", "Only dump this many rows").Int()
@@ -36,23 +36,30 @@ func doDump() {
 	catalog, err := parser.ReadCatalog(ese_ctx)
 	kingpin.FatalIfError(err, "Unable to open ese file")
 
-	count := 0
+	tables := *dump_command_table_name
+	if len(tables) == 0 {
+		tables = catalog.Tables.Keys()
+	}
 
-	err = catalog.DumpTable(*dump_command_table_name, func(row *ordereddict.Dict) error {
-		serialized, err := json.Marshal(row)
-		if err != nil {
-			return err
-		}
+	for _, t := range tables {
+		count := 0
 
-		count++
-		fmt.Printf("%v\n", string(serialized))
-		if *dump_command_table_name_limit > 0 &&
-			count >= *dump_command_table_name_limit {
-			return STOP_ERROR
-		}
+		err = catalog.DumpTable(t, func(row *ordereddict.Dict) error {
+			serialized, err := json.Marshal(row)
+			if err != nil {
+				return err
+			}
 
-		return nil
-	})
+			count++
+			fmt.Printf("%v\n", string(serialized))
+			if *dump_command_table_name_limit > 0 &&
+				count >= *dump_command_table_name_limit {
+				return STOP_ERROR
+			}
+
+			return nil
+		})
+	}
 
 	if err == STOP_ERROR {
 		return
