@@ -3,7 +3,7 @@ on: [pull_request]
 jobs:
   build:
     name: Windows Test
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     steps:
     - name: Set up Go 1.17
       uses: actions/setup-go@v2
