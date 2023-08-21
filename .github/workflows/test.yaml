@@ -2,7 +2,7 @@ name: Test
 on: [pull_request]
 jobs:
   build:
-    name: Windows Test
+    name: CI Test
     runs-on: ubuntu-latest
     steps:
     - name: Set up Go 1.17
