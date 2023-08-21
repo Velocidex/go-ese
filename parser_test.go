@@ -43,6 +43,22 @@ func (self *ESETestSuite) TestUAL() {
 	goldie.Assert(self.T(), fixture_name, out)
 }
 
+func (self *ESETestSuite) TestSystemIdentity() {
+	cmdline := []string{
+		"dump",
+		"./testdata/Sample_UAL/HyperV-PC/SystemIdentity.mdb", "SYSTEM_IDENTITY",
+	}
+	cmd := exec.Command(self.binary, cmdline...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Println(string(out))
+	}
+	assert.NoError(self.T(), err)
+
+	fixture_name := "SYSTEM_IDENTITY"
+	goldie.Assert(self.T(), fixture_name, out)
+}
+
 func (self *ESETestSuite) TestSRUM() {
 	cmdline := []string{
 		"dump", "--limit", "2",
