@@ -30,7 +30,7 @@ jobs:
         go test -v -update
 
     - uses: actions/upload-artifact@master
-      if: always()
+      if: ${{ ! success() }}
       with:
         name: fixtures
         path: fixtures
