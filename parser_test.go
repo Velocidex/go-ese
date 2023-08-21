@@ -57,6 +57,48 @@ func (self *ESETestSuite) TestSRUM() {
 	goldie.Assert(self.T(), fixture_name, out)
 }
 
+func (self *ESETestSuite) TestNtds() {
+	cmdline := []string{
+		"dump", "--limit", "5",
+		"testdata/Samples/ntds.dit", "datatable",
+	}
+	cmd := exec.Command(self.binary, cmdline...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		assert.NoError(self.T(), err)
+	}
+	fixture_name := "ntds.dit"
+	goldie.Assert(self.T(), fixture_name, out)
+}
+
+func (self *ESETestSuite) TestWebCache() {
+	cmdline := []string{
+		"dump", "testdata/Samples/WebCacheV01.dat", "Containers", "Container_2",
+	}
+	cmd := exec.Command(self.binary, cmdline...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		assert.NoError(self.T(), err)
+	}
+	fixture_name := "WebCacheV01.dat"
+	goldie.Assert(self.T(), fixture_name, out)
+}
+
+func (self *ESETestSuite) TestWindowsEdb() {
+	cmdline := []string{
+		"dump", "testdata/Samples/Windows.edb",
+		"SystemIndex_Gthr", "SystemIndex_GthrPth", "SystemIndex_PropertyStore",
+		"--limit", "10",
+	}
+	cmd := exec.Command(self.binary, cmdline...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		assert.NoError(self.T(), err)
+	}
+	fixture_name := "WindowsEdb"
+	goldie.Assert(self.T(), fixture_name, out)
+}
+
 func TestESE(t *testing.T) {
 	suite.Run(t, &ESETestSuite{})
 }

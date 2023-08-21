@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/Velocidex/ordereddict"
@@ -256,14 +255,15 @@ func (self *Table) tagToRecord(value *Value) *ordereddict.Dict {
 			} else {
 				switch column.Type {
 				case "Binary":
-					result.Set(column.Name, ParseString(tag.Reader,
-						variableSizeOffset+variableDataBytesProcessed,
-						itemLen-prevItemLen))
+					result.Set(column.Name, hex.EncodeToString([]byte(
+						ParseString(tag.Reader,
+							variableSizeOffset+variableDataBytesProcessed,
+							itemLen-prevItemLen))))
 
 				case "Text":
-					result.Set(column.Name, strings.TrimSuffix(ParseUTF16String(
-						tag.Reader, variableSizeOffset+variableDataBytesProcessed,
-						itemLen-prevItemLen), "\x00"))
+					result.Set(column.Name, ParseText(tag.Reader,
+						variableSizeOffset+variableDataBytesProcessed,
+						itemLen-prevItemLen, column.Flags))
 
 				default:
 					fmt.Printf("Can not handle Column %v variable data %v\n",

@@ -3,12 +3,16 @@ package parser
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"strings"
 )
 
 const (
+	// Flags on the record header
 	COMPRESSION      = 0x02
-	LZMA_COMPRESSION = 0x18
+	INLINE_STRING    = 0x01
+	INLINE_STRING_2  = 0x08
+	LZMA_COMPRESSION = 0x18 // Not supported
 )
 
 func Decompress7BitCompression(buf []byte) string {
@@ -48,21 +52,61 @@ func ParseLongText(buf []byte, flag uint32) string {
 		return ""
 	}
 
-	//fmt.Printf("Record Flag %v\n", flag)
-	start := 0
-	if flag != 1 {
-		flag = uint32(buf[0])
-		start++
+	// fmt.Printf("Column Flags %v\n", flag)
+	leading_byte := buf[0]
+	if leading_byte != 0 && leading_byte != 1 && leading_byte != 8 &&
+		leading_byte != 3 && leading_byte != 0x18 {
+		return strings.TrimSuffix(
+			UTF16BytesToUTF8(buf, binary.LittleEndian), "\x00")
+
 	}
-	//fmt.Printf("Inline Flag %v\n", flag)
+	// fmt.Printf("Inline Flags %v\n", flag)
 
 	// Lzxpress compression - not supported right now.
-	if flag&COMPRESSION != 0 {
-		if flag == 0x18 {
-			fmt.Printf("LZXPRESS compression not supported currently\n")
-			return string(buf)
-		}
-		return Decompress7BitCompression(buf[start:])
+	if leading_byte == 0x18 {
+		fmt.Printf("LZXPRESS compression not supported currently\n")
+		return string(buf)
 	}
-	return ParseTerminatedUTF16String(&BufferReaderAt{buf[start:]}, 0)
+
+	// The following is either 7 bit compressed or utf16 encoded. Its
+	// hard to figure out which it is though because there is no
+	// consistency in the flags. We do our best to guess!!
+	var result string
+	if len(buf) >= 3 && buf[2] == 0 {
+		// Probably UTF16 encoded
+		result = strings.TrimSuffix(
+			UTF16BytesToUTF8(buf[1:], binary.LittleEndian), "\x00")
+
+	} else {
+		// Probably 7bit compressed
+		result = Decompress7BitCompression(buf[1:])
+	}
+
+	//fmt.Printf("returned %v\n", result)
+	return result
+}
+
+func ParseText(reader io.ReaderAt, offset int64, len int64, flags uint32) string {
+	if len < 0 {
+		return ""
+
+	}
+	if len > 1024*10 {
+		len = 1024 * 10
+	}
+
+	data := make([]byte, len)
+	n, err := reader.ReadAt(data, offset)
+	if err != nil {
+		return ""
+	}
+	data = data[:n]
+
+	var str string
+	if flags == 1 {
+		str = string(data[:n])
+	} else {
+		str = UTF16BytesToUTF8(data, binary.LittleEndian)
+	}
+	return strings.TrimSuffix(str, "\x00")
 }
