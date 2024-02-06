@@ -11,6 +11,9 @@ import (
 var (
 	catalog_command = app.Command(
 		"catalog", "Dump the catalog")
+	catalog_command_long_value = catalog_command.Flag(
+		"long_values", "Also dump long value tables").Bool()
+
 	catalog_command_file_arg = catalog_command.Arg(
 		"file", "The image file to inspect",
 	).Required().OpenFile(os.O_RDONLY, os.FileMode(0666))
@@ -22,7 +25,11 @@ func doCatalog() {
 
 	catalog, err := parser.ReadCatalog(ese_ctx)
 	kingpin.FatalIfError(err, "Unable to open ese file")
-	fmt.Printf(catalog.Dump())
+	fmt.Printf(catalog.Dump(parser.DumpOptions{
+		Indexes:         true,
+		Tables:          true,
+		LongValueTables: *catalog_command_long_value,
+	}))
 }
 
 func init() {

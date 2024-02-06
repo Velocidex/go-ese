@@ -87,6 +87,20 @@ func (self *ESETestSuite) TestNtds() {
 	goldie.Assert(self.T(), fixture_name, out)
 }
 
+func (self *ESETestSuite) TestNtdsLongValues() {
+	cmdline := []string{
+		"dump", "--limit", "500",
+		"testdata/Samples/ntds.dit", "sd_table",
+	}
+	cmd := exec.Command(self.binary, cmdline...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		assert.NoError(self.T(), err)
+	}
+	fixture_name := "ntds.dit_sd_table"
+	goldie.Assert(self.T(), fixture_name, out)
+}
+
 func (self *ESETestSuite) TestWebCache() {
 	cmdline := []string{
 		"dump", "testdata/Samples/WebCacheV01.dat", "Containers", "Container_2",
@@ -94,7 +108,7 @@ func (self *ESETestSuite) TestWebCache() {
 	cmd := exec.Command(self.binary, cmdline...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		assert.NoError(self.T(), err)
+		assert.NoError(self.T(), err, string(out))
 	}
 	fixture_name := "WebCacheV01.dat"
 	goldie.Assert(self.T(), fixture_name, out)
@@ -109,7 +123,7 @@ func (self *ESETestSuite) TestWindowsEdb() {
 	cmd := exec.Command(self.binary, cmdline...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		assert.NoError(self.T(), err)
+		assert.NoError(self.T(), err, string(out))
 	}
 	fixture_name := "WindowsEdb"
 	goldie.Assert(self.T(), fixture_name, out)
