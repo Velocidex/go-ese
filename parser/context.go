@@ -49,3 +49,29 @@ func (self *ESEContext) GetPage(id int64) *PageHeader {
 			self.Reader, (id+1)*self.PageSize),
 	}
 }
+
+func (self *ESEContext) IsSmallPage() bool {
+	return self.PageSize <= 8192
+}
+
+func (self *ESEContext) MaskIb() uint16 {
+	var offsetMask uint16
+	if self.IsExtendedPageRevision() && !self.IsSmallPage() {
+		offsetMask = 0x7fff
+	} else {
+		offsetMask = 0x1fff
+	}
+	return offsetMask
+}
+
+func (self *ESEContext) IsExtendedPageRevision() bool {
+	return self.Revision >= 0x11
+}
+
+func (self *ESEContext) GetTaggedValueOffset(tagData uint16) uint16 {
+	return tagData & self.MaskIb()
+}
+
+func (self *ESEContext) GetTaggedValueFlags(tagData uint16) uint16 {
+	return tagData & (^self.MaskIb())
+}

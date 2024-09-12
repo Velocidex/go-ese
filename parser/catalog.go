@@ -3,6 +3,8 @@
 package parser
 
 import (
+	bytes2 "bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -29,6 +31,7 @@ type ColumnSpec struct {
 	Type       string
 	Flags      uint32
 	SpaceUsage int64
+	CodePage   uint32
 }
 
 type Table struct {
@@ -92,7 +95,7 @@ func (self *Table) tagToRecord(value *Value, header *PageHeader) *ordereddict.Di
 
 	result := ordereddict.NewDict()
 
-	var taggedItems map[uint32][]byte
+	var taggedItems map[uint32]TaggedValue
 
 	reader := value.Reader()
 
@@ -221,7 +224,7 @@ func (self *Table) tagToRecord(value *Value, header *PageHeader) *ordereddict.Di
 
 						// Flags can be given as the first char or in the
 						// column definition.
-						result.Set(column.Name, ParseLongText(data[:n], column.Flags))
+						result.Set(column.Name, ParseLongText(data[:n], column.CodePage))
 					}
 				}
 
@@ -315,115 +318,121 @@ func (self *Table) tagToRecord(value *Value, header *PageHeader) *ordereddict.Di
 
 			buf, pres := taggedItems[column.Identifier]
 			if pres {
-				reader := &BufferReaderAt{buf}
 				switch column.Type {
 				case "Binary":
-					result.Set(column.Name, hex.EncodeToString(buf))
+					result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+						return hex.EncodeToString(bytes)
+					}))
 
 				case "Long Binary":
-					// If the buf is key size (4 or 8 bytes) then we
-					// can look it up in the LV cache. Otherwise it is
-					// stored literally.
-					if len(buf) == 4 || len(buf) == 8 {
-						data, pres := self.LongValueLookup.GetLid(buf)
-						if pres {
-							buf = data
-						}
+					parsedValue := self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+						return hex.EncodeToString(bytes)
+					})
+					if parsedValue != nil {
+						result.Set(column.Name, parsedValue)
 					}
-
-					result.Set(column.Name, hex.EncodeToString(buf))
 
 				case "Long Text":
-					// If the buf is key size (4 or 8 bytes) then we
-					// can look it up in the LV cache. Otherwise it is
-					// stored literally.
-					if len(buf) == 4 || len(buf) == 8 {
-						data, pres := self.LongValueLookup.GetLid(buf)
-						if pres {
-							buf = data
-						}
+					parsedValue := self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+						return ParseLongText(bytes, column.CodePage)
+					})
+					if parsedValue != nil {
+						result.Set(column.Name, parsedValue)
 					}
-
-					// Flags can be given as the first char or in the
-					// column definition.
-					result.Set(column.Name, ParseLongText(buf, column.Flags))
 
 				case "Boolean":
 					if column.SpaceUsage == 1 {
-						result.Set(column.Name, ParseUint8(reader, 0) > 0)
+						result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+							return bytes[0] > 0
+						}))
 					}
 
 				case "Signed byte":
 					if column.SpaceUsage == 1 {
-						result.Set(column.Name, ParseUint8(reader, 0))
+						result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+							return bytes[0]
+						}))
 					}
 
 				case "Signed short":
 					if column.SpaceUsage == 2 {
-						result.Set(column.Name, ParseInt16(reader, 0))
+						result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+							return int16(binary.LittleEndian.Uint16(bytes))
+						}))
 					}
 
 				case "Unsigned short":
 					if column.SpaceUsage == 2 {
-						result.Set(column.Name, ParseUint16(reader, 0))
+						result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+							return binary.LittleEndian.Uint16(bytes)
+						}))
 					}
 
 				case "Signed long":
 					if column.SpaceUsage == 4 {
-						result.Set(column.Name, ParseInt32(reader, 0))
+						result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+							return int32(binary.LittleEndian.Uint32(bytes))
+						}))
 					}
 
 				case "Unsigned long":
 					if column.SpaceUsage == 4 {
-						result.Set(column.Name, ParseUint32(reader, 0))
+						result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+							return binary.LittleEndian.Uint32(bytes)
+						}))
 					}
 
 				case "Single precision FP":
 					if column.SpaceUsage == 4 {
-						result.Set(column.Name, math.Float32frombits(
-							ParseUint32(reader, 0)))
+						result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+							return math.Float32frombits(binary.LittleEndian.Uint32(bytes))
+						}))
 					}
 
 				case "Double precision FP":
 					if column.SpaceUsage == 8 {
-						result.Set(column.Name, math.Float64frombits(
-							ParseUint64(reader, 0)))
+						result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+							return math.Float64frombits(binary.LittleEndian.Uint64(bytes))
+						}))
 					}
 
 				case "DateTime":
 					if column.SpaceUsage == 8 {
-						switch column.Flags {
-						case 1:
-							// A more modern way of encoding
-							result.Set(column.Name, WinFileTime64(reader, 0))
+						result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+							switch column.Flags {
+							case 1:
+								// A more modern way of encoding
+								return WinFileTime64Bin(bytes)
 
-						case 0:
-							// Some hair brained time serialization method
-							// https://docs.microsoft.com/en-us/windows/win32/extensible-storage-engine/jet-coltyp
+							case 0:
+								// Some hair brained time serialization method
+								// https://docs.microsoft.com/en-us/windows/win32/extensible-storage-engine/jet-coltyp
 
-							value_int := ParseUint64(reader, 0)
-							days_since_1900 := math.Float64frombits(value_int)
+								value_int := binary.LittleEndian.Uint64(bytes)
+								days_since_1900 := math.Float64frombits(value_int)
 
-							// In python time.mktime((1900,1,1,0,0,0,0,365,0))
-							result.Set(column.Name,
-								time.Unix(int64(days_since_1900*24*60*60)+
-									-2208988800, 0).UTC())
-
-						default:
-							// We have no idea
-							result.Set(column.Name, ParseUint64(reader, 0))
-						}
+								// In python time.mktime((1900,1,1,0,0,0,0,365,0))
+								return time.Unix(int64(days_since_1900*24*60*60)+
+									-2208988800, 0).UTC()
+							default:
+								// We have no idea
+								return binary.LittleEndian.Uint64(bytes)
+							}
+						}))
 					}
 
 				case "Long long", "Currency":
 					if column.SpaceUsage == 8 {
-						result.Set(column.Name, ParseUint64(reader, 0))
+						result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+							return binary.LittleEndian.Uint64(bytes)
+						}))
 					}
 
 				case "GUID":
 					if column.SpaceUsage == 16 {
-						result.Set(column.Name,
-							self.Header.Profile.GUID(reader, 0).AsString())
+						result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+							return self.Header.Profile.GUID(bytes2.NewReader(bytes), 0).AsString()
+						}))
 					}
 
 				default:
@@ -467,26 +476,128 @@ type tagBuffer struct {
 }
 
 /*
-  Tagged values are used to store sparse values.
+Tagged values are used to store sparse values.
 
-  They consist of an array of RecordTag, each RecordTag has an
-  Identifier and an offset to the start of its data. The length of the
-  data in each record is determine by the start of the next record.
+They consist of an array of RecordTag, each RecordTag has an
+Identifier and an offset to the start of its data. The length of the
+data in each record is determine by the start of the next record.
 
-  Example:
+Example:
 
-  00000050  00 01 0c 40 a4 01 21 00  a5 01 23 00 01 6c 00 61  |...@..!...#..l.a|
-  00000060  00 62 00 5c 00 64 00 63  00 2d 00 31 00 24 00 00  |.b.\.d.c.-.1.$..|
-  00000070  00 3d 00 f9 00                                    |.=...|
+00000050  00 01 0c 40 a4 01 21 00  a5 01 23 00 01 6c 00 61  |...@..!...#..l.a|
+00000060  00 62 00 5c 00 64 00 63  00 2d 00 31 00 24 00 00  |.b.\.d.c.-.1.$..|
+00000070  00 3d 00 f9 00                                    |.=...|
 
-  Slice is 0x50-0x75 00010c40a4012100a5012300016c00610062005c00640063002d003100240000003d00f900
-  Consumed 0x15 bytes of TAGGED space from 0xc to 0x21 for tag 0x100
-  Consumed 0x2 bytes of TAGGED space from 0x21 to 0x23 for tag 0x1a4
-  Consumed 0x2 bytes of TAGGED space from 0x23 to 0x25 for tag 0x1a5
+Slice is 0x50-0x75 00010c40a4012100a5012300016c00610062005c00640063002d003100240000003d00f900
+Consumed 0x15 bytes of TAGGED space from 0xc to 0x21 for tag 0x100
+Consumed 0x2 bytes of TAGGED space from 0x21 to 0x23 for tag 0x1a4
+Consumed 0x2 bytes of TAGGED space from 0x23 to 0x25 for tag 0x1a5
 */
-func ParseTaggedValues(ctx *ESEContext, buffer []byte) map[uint32][]byte {
-	result := make(map[uint32][]byte)
+type TaggedValue struct {
+	bHeader byte
+	data    []byte
+}
 
+func (self *Table) ParseMultiValue(buffer []byte, parseFn func([]byte) any, fLongValue bool, fCompressed bool) []any {
+	/*
+		1. Only the first element of a multi-value can be compressed
+		2. A long value in a multi-value can be compressed iff it is not separated
+		3. If a long value in a multi-value is neither compressed nor separated it is considered an intrinsic multi-value
+	*/
+	var multiValues []any
+	var maskIb uint16 = 0x7fff
+	numberOfMvs := int(binary.LittleEndian.Uint16(buffer[0:2])&maskIb) / 2
+	for imv := 0; imv < numberOfMvs; imv++ {
+		mv1 := binary.LittleEndian.Uint16(buffer[2*imv : 2*imv+2])
+		ib1 := int(mv1 & maskIb)
+		var ib2 int
+		if imv == numberOfMvs-1 {
+			ib2 = len(buffer)
+		} else {
+			ib2 = int(binary.LittleEndian.Uint16(buffer[2*(imv+1):2*(imv+1)+2]) & maskIb)
+		}
+		data := buffer[ib1:ib2]
+		fSeparatedInstance := (mv1 & 0x8000) != 0
+		if Debug && fCompressed && imv == 0 && fSeparatedInstance {
+			fmt.Printf("long value compressed AND separated, something has gone wrong\n")
+		}
+		var newData any
+		if fLongValue {
+			if fCompressed && imv == 0 {
+				d := DecompressLongValue(data)
+				if d != nil {
+					newData = parseFn(d)
+				}
+			}
+			if fSeparatedInstance {
+				d, pres := self.LongValueLookup.GetLid(data)
+				if pres && d != nil {
+					newData = parseFn(d)
+				}
+			}
+		} else {
+			newData = parseFn(data)
+		}
+		if newData != nil {
+			multiValues = append(multiValues, newData)
+		}
+	}
+	return multiValues
+}
+
+func ParseTwoValue(buffer []byte, parseFn func([]byte) any) []any {
+	var twoValues []any
+	lenFstValue := int(buffer[0])
+	twoValues = append(twoValues, parseFn(buffer[1:1+lenFstValue]))
+	twoValues = append(twoValues, parseFn(buffer[1+lenFstValue:]))
+	return twoValues
+}
+
+func (self *Table) ParseTaggedValueWithPrimitiveDecoder(ctx *ESEContext, value TaggedValue, parseFn func([]byte) any) any {
+	/*
+		1. Multi-values have at least 3 values
+		2. Two-values have exactly two values
+		3. Two-values can not contain long values
+		4. Only long values can be compressed or separated
+	*/
+	fLongValue := (value.bHeader & 0x1) != 0
+	fSeparated := (value.bHeader & 0x4) != 0
+	fCompressed := (value.bHeader & 0x2) != 0
+	fMultiValues := (value.bHeader & 0x8) != 0
+	fTwoValues := (value.bHeader & 0x10) != 0
+	switch {
+	case fMultiValues && fTwoValues:
+		return ParseTwoValue(value.data, parseFn)
+	case fMultiValues:
+		return self.ParseMultiValue(value.data, parseFn, fLongValue, fCompressed)
+	case fSeparated:
+		newData, pres := self.LongValueLookup.GetLid(value.data)
+		if pres {
+			if fCompressed {
+				newData = DecompressLongValue(newData)
+			}
+			if newData != nil {
+				return parseFn(newData)
+			} else {
+				return nil
+			}
+		}
+		return nil
+	default: // optionally compressed intrinsic long value, or value without special flags
+		data := value.data
+		if fCompressed {
+			data = DecompressLongValue(data)
+		}
+		if data != nil {
+			return parseFn(data)
+		} else {
+			return nil
+		}
+	}
+}
+
+func ParseTaggedValues(ctx *ESEContext, buffer []byte) map[uint32]TaggedValue {
+	result := make(map[uint32]TaggedValue)
 	if len(buffer) < 2 {
 		return result
 	}
@@ -496,15 +607,17 @@ func ParseTaggedValues(ctx *ESEContext, buffer []byte) map[uint32][]byte {
 	tags := []tagBuffer{}
 
 	// Tags go from 0 to the start of the first tag's data
-	for offset := int64(0); offset < int64(first_record.DataOffset()); offset += 4 {
+	for offset := int64(0); offset < int64(ctx.GetTaggedValueOffset(first_record.TagData())); offset += 4 {
 		record_tag := ctx.Profile.RecordTag(reader, offset)
 		if Debug {
 			fmt.Printf("RecordTag %v\n", record_tag.DebugString())
+			fmt.Printf("Tag flags are %x\n", ctx.GetTaggedValueFlags(record_tag.TagData()))
+			fmt.Printf("Tag offset is %x\n", ctx.GetTaggedValueOffset(record_tag.TagData()))
 		}
 		tags = append(tags, tagBuffer{
 			identifier: uint32(record_tag.Identifier()),
-			start:      record_tag.DataOffset(),
-			flags:      record_tag.Flags(),
+			start:      uint64(ctx.GetTaggedValueOffset(record_tag.TagData())),
+			flags:      uint64(ctx.GetTaggedValueFlags(record_tag.TagData())),
 		})
 	}
 
@@ -517,7 +630,9 @@ func ParseTaggedValues(ctx *ESEContext, buffer []byte) map[uint32][]byte {
 			end = tags[idx+1].start
 		}
 
-		if tag.flags > 0 {
+		var headerByte byte
+		if (!ctx.IsSmallPage() && ctx.IsExtendedPageRevision()) || (tag.flags&0x4000) != 0 {
+			headerByte = buffer[start]
 			start += 1
 		}
 
@@ -533,7 +648,10 @@ func ParseTaggedValues(ctx *ESEContext, buffer []byte) map[uint32][]byte {
 			end = start
 		}
 
-		result[tag.identifier] = buffer[start:end]
+		result[tag.identifier] = TaggedValue{
+			bHeader: headerByte,
+			data:    buffer[start:end],
+		}
 		if Debug {
 			fmt.Printf("Consumed %#x bytes of TAGGED space from %#x to %#x for tag %#x\n",
 				end-start, start, end, tag.identifier)
@@ -632,6 +750,7 @@ func (self *Catalog) __addItem(header *PageHeader, id int64, value *Value) error
 			Type:       column.ColumnType().Name,
 			Flags:      column.ColumnFlags(),
 			SpaceUsage: int64(column.SpaceUsage()),
+			CodePage:   column.CodePage(),
 		})
 
 	case "CATALOG_TYPE_INDEX":
@@ -756,7 +875,6 @@ func (self *Catalog) Dump(options DumpOptions) string {
 
 func ReadCatalog(ctx *ESEContext) (*Catalog, error) {
 	result := &Catalog{ctx: ctx, Tables: ordereddict.NewDict()}
-
 	err := WalkPages(ctx, CATALOG_PAGE_NUMBER, result.__addItem)
 	if err != nil {
 		return nil, err

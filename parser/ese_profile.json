@@ -194,16 +194,7 @@
 
     "RecordTag": [4, {
         "Identifier": [0, ["unsigned short"]],
-        "DataOffset": [2, ["BitField", {
-            "target": "unsigned short",
-            "start_bit": 0,
-            "end_bit": 13
-        }]],
-        "Flags": [2, ["BitField", {
-            "target": "unsigned short",
-            "start_bit": 14,
-            "end_bit": 16
-        }]]
+        "TagData": [2, ["unsigned short"]]
     }],
 
     "Misc": [0, {
