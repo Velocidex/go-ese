@@ -118,8 +118,7 @@ type ESEProfile struct {
     Off_PageHeader__AvailablePageTag int64
     Off_PageHeader__Flags int64
     Off_RecordTag_Identifier int64
-    Off_RecordTag_DataOffset int64
-    Off_RecordTag_Flags int64
+    Off_RecordTag_TagData int64
     Off_Tag__ValueSize int64
     Off_Tag__ValueOffset int64
     Off_Tag_Flags_ int64
@@ -128,7 +127,7 @@ type ESEProfile struct {
 
 func NewESEProfile() *ESEProfile {
     // Specific offsets can be tweaked to cater for slight version mismatches.
-    self := &ESEProfile{0,4,8,12,0,4,8,12,0,4,8,12,0,4,0,2,4,0,0,0,4,6,10,10,10,10,0,1,2,0,-2,0,0,0,4,8,12,0,0,0,4,8,232,12,16,24,236,0,4,6,8,0,1,2,3,4,5,4,12,0,4,0,8,0,2,4,0,0,0,0,0,8,16,20,24,28,32,34,36,0,2,2,0,2,2,2}
+    self := &ESEProfile{0,4,8,12,0,4,8,12,0,4,8,12,0,4,0,2,4,0,0,0,4,6,10,10,10,10,0,1,2,0,-2,0,0,0,4,8,12,0,0,0,4,8,232,12,16,24,236,0,4,6,8,0,1,2,3,4,5,4,12,0,4,0,8,0,2,4,0,0,0,0,0,8,16,20,24,28,32,34,36,0,2,0,2,2,2}
     return self
 }
 
@@ -1064,6 +1063,10 @@ func (self *PageHeader_) Flags() *Flags {
    names := make(map[string]bool)
 
 
+   if value & 128 != 0 {
+      names["Long"] = true
+   }
+
    if value & 1 != 0 {
       names["Root"] = true
    }
@@ -1086,10 +1089,6 @@ func (self *PageHeader_) Flags() *Flags {
 
    if value & 64 != 0 {
       names["Index"] = true
-   }
-
-   if value & 128 != 0 {
-      names["Long"] = true
    }
 
    return &Flags{Value: uint64(value), Names: names}
@@ -1122,20 +1121,13 @@ func (self *RecordTag) Identifier() uint16 {
    return ParseUint16(self.Reader, self.Profile.Off_RecordTag_Identifier + self.Offset)
 }
 
-func (self *RecordTag) DataOffset() uint64 {
-   value := ParseUint16(self.Reader, self.Profile.Off_RecordTag_DataOffset + self.Offset)
-   return (uint64(value) & 0x1fff) >> 0x0
-}
-
-func (self *RecordTag) Flags() uint64 {
-   value := ParseUint16(self.Reader, self.Profile.Off_RecordTag_Flags + self.Offset)
-   return (uint64(value) & 0xffff) >> 0xe
+func (self *RecordTag) TagData() uint16 {
+   return ParseUint16(self.Reader, self.Profile.Off_RecordTag_TagData + self.Offset)
 }
 func (self *RecordTag) DebugString() string {
     result := fmt.Sprintf("struct RecordTag @ %#x:\n", self.Offset)
     result += fmt.Sprintf("  Identifier: %#0x\n", self.Identifier())
-    result += fmt.Sprintf("  DataOffset: %#0x\n", self.DataOffset())
-    result += fmt.Sprintf("  Flags: %#0x\n", self.Flags())
+    result += fmt.Sprintf("  TagData: %#0x\n", self.TagData())
     return result
 }
 
@@ -1241,7 +1233,8 @@ func ParseArray_byte(profile *ESEProfile, reader io.ReaderAt, offset int64, coun
 }
 
 func ParseInt16(reader io.ReaderAt, offset int64) int16 {
-    data := make([]byte, 2)
+	var buf [2]byte
+	data := buf[:]
     _, err := reader.ReadAt(data, offset)
     if err != nil {
        return 0
@@ -1250,7 +1243,8 @@ func ParseInt16(reader io.ReaderAt, offset int64) int16 {
 }
 
 func ParseInt32(reader io.ReaderAt, offset int64) int32 {
-    data := make([]byte, 4)
+	var buf [4]byte
+	data := buf[:]
     _, err := reader.ReadAt(data, offset)
     if err != nil {
        return 0
@@ -1259,7 +1253,8 @@ func ParseInt32(reader io.ReaderAt, offset int64) int32 {
 }
 
 func ParseInt64(reader io.ReaderAt, offset int64) int64 {
-    data := make([]byte, 8)
+	var buf [8]byte
+	data := buf[:]
     _, err := reader.ReadAt(data, offset)
     if err != nil {
        return 0
@@ -1268,7 +1263,8 @@ func ParseInt64(reader io.ReaderAt, offset int64) int64 {
 }
 
 func ParseUint16(reader io.ReaderAt, offset int64) uint16 {
-    data := make([]byte, 2)
+	var buf [2]byte
+	data := buf[:]
     _, err := reader.ReadAt(data, offset)
     if err != nil {
        return 0
@@ -1277,7 +1273,8 @@ func ParseUint16(reader io.ReaderAt, offset int64) uint16 {
 }
 
 func ParseUint32(reader io.ReaderAt, offset int64) uint32 {
-    data := make([]byte, 4)
+	var buf [4]byte
+	data := buf[:]
     _, err := reader.ReadAt(data, offset)
     if err != nil {
        return 0
@@ -1286,7 +1283,8 @@ func ParseUint32(reader io.ReaderAt, offset int64) uint32 {
 }
 
 func ParseUint64(reader io.ReaderAt, offset int64) uint64 {
-    data := make([]byte, 8)
+	var buf [8]byte
+	data := buf[:]
     _, err := reader.ReadAt(data, offset)
     if err != nil {
        return 0
@@ -1295,16 +1293,18 @@ func ParseUint64(reader io.ReaderAt, offset int64) uint64 {
 }
 
 func ParseUint8(reader io.ReaderAt, offset int64) byte {
-    result := make([]byte, 1)
-    _, err := reader.ReadAt(result, offset)
+	var buf [1]byte
+	data := buf[:]
+    _, err := reader.ReadAt(data, offset)
     if err != nil {
        return 0
     }
-    return result[0]
+    return data[0]
 }
 
 func ParseTerminatedString(reader io.ReaderAt, offset int64) string {
-   data := make([]byte, 1024)
+   var buf [1024]byte
+   data := buf[:]
    n, err := reader.ReadAt(data, offset)
    if err != nil && err != io.EOF {
      return ""
@@ -1327,7 +1327,8 @@ func ParseString(reader io.ReaderAt, offset int64, length int64) string {
 
 
 func ParseTerminatedUTF16String(reader io.ReaderAt, offset int64) string {
-   data := make([]byte, 1024)
+   var buf [1024]byte
+   data := buf[:]
    n, err := reader.ReadAt(data, offset)
    if err != nil && err != io.EOF {
      return ""

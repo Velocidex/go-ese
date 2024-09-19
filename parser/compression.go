@@ -7,15 +7,7 @@ import (
 	"strings"
 )
 
-const (
-	// Flags on the record header
-	COMPRESSION      = 0x02
-	INLINE_STRING    = 0x01
-	INLINE_STRING_2  = 0x08
-	LZMA_COMPRESSION = 0x18 // Not supported
-)
-
-func Decompress7BitCompression(buf []byte) string {
+func Decompress7BitCompression(buf []byte) []byte {
 	result := make([]byte, 0, (len(buf)+5)*8/7)
 
 	value_16bit := uint16(0)
@@ -43,46 +35,44 @@ func Decompress7BitCompression(buf []byte) string {
 			bit_index = 0
 		}
 	}
-
-	return strings.Split(string(result), "\x00")[0]
+	return result
 }
 
-func ParseLongText(buf []byte, flag uint32) string {
-	if len(buf) < 2 {
+func DecompressLongValue(buf []byte) []byte {
+	compression_flag := buf[0] >> 3
+	switch {
+	case compression_flag == 0x1:
+		return Decompress7BitCompression(buf)
+	case compression_flag == 0x2:
+		decompressed := Decompress7BitCompression(buf)
+		decompressedUTF16 := make([]byte, len(decompressed)*2)
+		// Technically not needed but simplifies the calling code since the column codepage is Unicode
+		for i := range decompressed {
+			decompressedUTF16[2*i] = decompressed[i]
+		}
+		return decompressedUTF16
+	case compression_flag == 0x3:
+		fmt.Printf("LZXPRESS compression not supported currently\n")
+		return nil
+	default:
+		fmt.Printf("Unknown compression flag: %d\n", compression_flag)
+		return nil
+	}
+}
+
+func ParseLongText(buf []byte, cp uint32) string {
+	//cp == 0 is interpreted as ASCII (see upstream)
+	if cp == 0 || cp == 1252 {
+		return strings.Split(string(buf), "\x00")[0]
+	} else if cp == 1200 {
+		new_buf := UTF16BytesToUTF8(buf, binary.LittleEndian)
+		return strings.Split(new_buf, "\x00")[0]
+	} else {
+		if Debug {
+			fmt.Printf("Unexpected code page: %d for value %x\n", cp, buf)
+		}
 		return ""
 	}
-
-	// fmt.Printf("Column Flags %v\n", flag)
-	leading_byte := buf[0]
-	if leading_byte != 0 && leading_byte != 1 && leading_byte != 8 &&
-		leading_byte != 3 && leading_byte != 0x18 {
-		return strings.Split(
-			UTF16BytesToUTF8(buf, binary.LittleEndian), "\x00")[0]
-
-	}
-	// fmt.Printf("Inline Flags %v\n", flag)
-
-	// Lzxpress compression - not supported right now.
-	if leading_byte == 0x18 {
-		fmt.Printf("LZXPRESS compression not supported currently\n")
-		return strings.Split(string(buf), "\x00")[0]
-	}
-
-	// The following is either 7 bit compressed or utf16 encoded. Its
-	// hard to figure out which it is though because there is no
-	// consistency in the flags. We do our best to guess!!
-	var result string
-	if len(buf) >= 3 && buf[2] == 0 {
-		// Probably UTF16 encoded
-		result = UTF16BytesToUTF8(buf[1:], binary.LittleEndian)
-
-	} else {
-		// Probably 7bit compressed
-		result = Decompress7BitCompression(buf[1:])
-	}
-
-	//fmt.Printf("returned %v\n", result)
-	return strings.Split(result, "\x00")[0]
 }
 
 func ParseText(reader io.ReaderAt, offset int64, len int64, flags uint32) string {
