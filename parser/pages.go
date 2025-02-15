@@ -86,13 +86,34 @@ func GetPageValues(ctx *ESEContext, header *PageHeader, id int64) []*Value {
 	// dedicated call to PageHeader.ExternalValue()
 	offset -= 4
 
-	for tag_count := header.AvailablePageTag() - 1; tag_count > 0; tag_count-- {
-		tag := ctx.Profile.Tag(ctx.Reader, offset)
+	available_tags := header.AvailablePageTag()
+	var largest_value_offset int64
 
-		result = append(result, NewReaderValue(
-			ctx, tag, id, ctx.Reader,
-			tag.ValueOffsetInPage(ctx, header),
-			int64(tag.ValueSize(ctx))))
+	for tag_count := available_tags - 1; tag_count > 0; tag_count-- {
+		// Handle the case where available_tags lies and is way too
+		// large. The tags are stored in the end of the page and go
+		// backwards but they can not overlap the values which are
+		// stored from the start of the page and go forward. So if the
+		// tag overlaps with a value then we break early as there are
+		// no more tags.
+		if offset < largest_value_offset {
+			break
+		}
+
+		tag := ctx.Profile.Tag(ctx.Reader, offset)
+		value_size := int64(tag.ValueSize(ctx))
+		offset_in_page := tag.ValueOffsetInPage(ctx, header)
+
+		if offset_in_page > largest_value_offset {
+			largest_value_offset = offset_in_page + value_size
+		}
+
+		// Only add read values with non-zero size.
+		if value_size > 0 {
+			result = append(result, NewReaderValue(
+				ctx, tag, id, ctx.Reader, offset_in_page, value_size))
+		}
+
 		offset -= 4
 	}
 

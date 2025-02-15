@@ -632,6 +632,10 @@ func ParseTaggedValues(ctx *ESEContext, buffer []byte) map[uint32]TaggedValue {
 
 		var headerByte byte
 		if (!ctx.IsSmallPage() && ctx.IsExtendedPageRevision()) || (tag.flags&0x4000) != 0 {
+			// This should not happen
+			if start > uint64(len(buffer))-1 {
+				continue
+			}
 			headerByte = buffer[start]
 			start += 1
 		}
