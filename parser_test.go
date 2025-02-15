@@ -24,9 +24,9 @@ func (self *ESETestSuite) SetupTest() {
 }
 
 // User Access Logs have some interesting columns types:
-// * GUID
-// * DateTime seem to be encoded in a different way - a uint64 windows
-//   file time.
+//   - GUID
+//   - DateTime seem to be encoded in a different way - a uint64 windows
+//     file time.
 func (self *ESETestSuite) TestUAL() {
 	cmdline := []string{
 		"dump", "--limit", "2",
@@ -126,6 +126,20 @@ func (self *ESETestSuite) TestWindowsEdb() {
 		assert.NoError(self.T(), err, string(out))
 	}
 	fixture_name := "WindowsEdb"
+	goldie.Assert(self.T(), fixture_name, out)
+}
+
+func (self *ESETestSuite) TestWindowsQmgr() {
+	cmdline := []string{
+		"dump", "testdata/Samples/qmgr.db",
+		"--limit", "10",
+	}
+	cmd := exec.Command(self.binary, cmdline...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		assert.NoError(self.T(), err, string(out))
+	}
+	fixture_name := "WindowsQmgr"
 	goldie.Assert(self.T(), fixture_name, out)
 }
 

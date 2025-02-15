@@ -5,6 +5,11 @@ import (
 	"io"
 )
 
+const (
+	// Read at most 10Mb
+	MAX_MEMORY = 10 * 1024 * 1024
+)
+
 type LongValue struct {
 	Value  *Value
 	header *PageHeader
@@ -15,7 +20,12 @@ type LongValue struct {
 
 func (self *LongValue) Buffer() []byte {
 	start := int64(self.Key.EndOffset())
-	result := make([]byte, self.Value.BufferSize-start)
+	length := self.Value.BufferSize - start
+	if length > MAX_MEMORY {
+		length = MAX_MEMORY
+	}
+
+	result := make([]byte, length)
 	self.Value.Reader().ReadAt(result, start)
 	return result
 }
