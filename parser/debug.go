@@ -7,7 +7,7 @@ var (
 	Debug = false
 
 	// Debugging during walk
-	DebugWalk = true
+	DebugWalk = false
 )
 
 func DlvBreak() {
