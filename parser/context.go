@@ -10,12 +10,13 @@ type ESEContext struct {
 	Reader   io.ReaderAt
 	Profile  *ESEProfile
 	PageSize int64
+	MaxPage  int64
 	Header   *FileHeader
 	Version  uint32
 	Revision uint32
 }
 
-func NewESEContext(reader io.ReaderAt) (*ESEContext, error) {
+func NewESEContext(reader io.ReaderAt, size int64) (*ESEContext, error) {
 	result := &ESEContext{
 		Profile: NewESEProfile(),
 		Reader:  reader,
@@ -38,16 +39,22 @@ func NewESEContext(reader io.ReaderAt) (*ESEContext, error) {
 
 	result.Version = result.Header.FormatVersion()
 	result.Revision = result.Header.FormatRevision()
+	result.MaxPage = size/result.PageSize + 1
 	return result, nil
 }
 
-func (self *ESEContext) GetPage(id int64) *PageHeader {
+func (self *ESEContext) GetPage(id int64) (*PageHeader, error) {
+	if self.MaxPage > 0 && id > self.MaxPage {
+		return nil, fmt.Errorf("Page %v exceeds max page %v",
+			id, self.MaxPage)
+	}
+
 	// First file page is file header, second page is backup of file
 	// header.
 	return &PageHeader{
 		PageHeader_: self.Profile.PageHeader_(
 			self.Reader, (id+1)*self.PageSize),
-	}
+	}, nil
 }
 
 func (self *ESEContext) IsSmallPage() bool {

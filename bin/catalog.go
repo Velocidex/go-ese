@@ -20,7 +20,11 @@ var (
 )
 
 func doCatalog() {
-	ese_ctx, err := parser.NewESEContext(*catalog_command_file_arg)
+	stat, err := (*catalog_command_file_arg).Stat()
+	kingpin.FatalIfError(err, "Unable to open ese file")
+
+	ese_ctx, err := parser.NewESEContext(
+		*catalog_command_file_arg, stat.Size())
 	kingpin.FatalIfError(err, "Unable to open ese file")
 
 	catalog, err := parser.ReadCatalog(ese_ctx)

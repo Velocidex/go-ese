@@ -39,6 +39,10 @@ func Decompress7BitCompression(buf []byte) []byte {
 }
 
 func DecompressLongValue(buf []byte) []byte {
+	if len(buf) == 0 {
+		return nil
+	}
+
 	compression_flag := buf[0] >> 3
 	switch {
 	case compression_flag == 0x1:

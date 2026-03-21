@@ -21,7 +21,11 @@ var (
 )
 
 func doPage() {
-	ese_ctx, err := parser.NewESEContext(*page_command_file_arg)
+	stat, err := (*page_command_file_arg).Stat()
+	kingpin.FatalIfError(err, "Unable to open ese file")
+
+	ese_ctx, err := parser.NewESEContext(
+		*page_command_file_arg, stat.Size())
 	kingpin.FatalIfError(err, "Unable to open ese file")
 
 	parser.DumpPage(ese_ctx, *page_command_page_number)
