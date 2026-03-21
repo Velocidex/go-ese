@@ -26,11 +26,18 @@ var (
 	dump_command_table_name_limit = dump_command.Flag(
 		"limit", "Only dump this many rows").Int()
 
+	dump_command_pages = dump_command.Flag(
+		"pages", "Only show the pages").Bool()
+
 	STOP_ERROR = errors.New("Stop")
 )
 
 func doDump() {
-	ese_ctx, err := parser.NewESEContext(*dump_command_file_arg)
+	stat, err := (*dump_command_file_arg).Stat()
+	kingpin.FatalIfError(err, "Unable to open ese file")
+
+	ese_ctx, err := parser.NewESEContext(
+		*dump_command_file_arg, stat.Size())
 	kingpin.FatalIfError(err, "Unable to open ese file")
 
 	catalog, err := parser.ReadCatalog(ese_ctx)
@@ -43,6 +50,22 @@ func doDump() {
 
 	for _, t := range tables {
 		count := 0
+
+		if *dump_command_pages {
+			table_any, pres := catalog.Tables.Get(t)
+			if !pres {
+				continue
+			}
+
+			table := table_any.(*parser.Table)
+			err := parser.WalkPages(ese_ctx, int64(table.FatherDataPageNumber),
+				func(header *parser.PageHeader, id int64, value *parser.Value) error {
+					fmt.Printf("Page %v: %v\n", id, header.DebugString())
+					return nil
+				})
+			kingpin.FatalIfError(err, "Unable to walk table pages")
+			continue
+		}
 
 		err = catalog.DumpTable(t, func(row *ordereddict.Dict) error {
 			serialized, err := json.Marshal(row)

@@ -7,10 +7,10 @@ var (
 	Debug = false
 
 	// Debugging during walk
-	DebugWalk = false
+	DebugWalk = true
 )
 
-func DlvDebug() {
+func DlvBreak() {
 
 }
 

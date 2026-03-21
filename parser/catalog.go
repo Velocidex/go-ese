@@ -516,6 +516,11 @@ func (self *Table) ParseMultiValue(buffer []byte, parseFn func([]byte) any, fLon
 		} else {
 			ib2 = int(binary.LittleEndian.Uint16(buffer[2*(imv+1):2*(imv+1)+2]) & maskIb)
 		}
+
+		if ib1 > len(buffer) || ib2 > len(buffer) || ib1 > ib2 {
+			return nil
+		}
+
 		data := buffer[ib1:ib2]
 		fSeparatedInstance := (mv1 & 0x8000) != 0
 		if Debug && fCompressed && imv == 0 && fSeparatedInstance {
@@ -548,6 +553,10 @@ func (self *Table) ParseMultiValue(buffer []byte, parseFn func([]byte) any, fLon
 func ParseTwoValue(buffer []byte, parseFn func([]byte) any) []any {
 	var twoValues []any
 	lenFstValue := int(buffer[0])
+	if lenFstValue > len(buffer) {
+		return nil
+	}
+
 	twoValues = append(twoValues, parseFn(buffer[1:1+lenFstValue]))
 	twoValues = append(twoValues, parseFn(buffer[1+lenFstValue:]))
 	return twoValues

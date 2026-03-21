@@ -89,6 +89,16 @@ func GetPageValues(ctx *ESEContext, header *PageHeader, id int64) []*Value {
 	available_tags := header.AvailablePageTag()
 	var largest_value_offset int64
 
+	/*  https://github.com/libyal/libesedb/issues/78
+
+	In the 32KiB page format the upper 4 bits of the available page tag
+	are reserved (ctagReserved) and the lower 12 bits contain the
+	actual number of page tags
+	*/
+	if ctx.PageSize >= 32768 {
+		available_tags &= 0x0fff
+	}
+
 	for tag_count := available_tags - 1; tag_count > 0; tag_count-- {
 		// Handle the case where available_tags lies and is way too
 		// large. The tags are stored in the end of the page and go
@@ -179,7 +189,11 @@ func (self *PageHeader) EndOffset(ctx *ESEContext) int64 {
 }
 
 func DumpPage(ctx *ESEContext, id int64) {
-	header := ctx.GetPage(id)
+	header, err := ctx.GetPage(id)
+	if err != nil {
+		fmt.Printf("Page %v: %v\n", id, err)
+		return
+	}
 	fmt.Printf("Page %v: %v\n", id, header.DebugString())
 
 	// Show the tags
@@ -319,7 +333,10 @@ func _walkPages(ctx *ESEContext,
 	}
 	seen[id] = true
 
-	header := ctx.GetPage(id)
+	header, err := ctx.GetPage(id)
+	if err != nil {
+		return err
+	}
 	values := GetPageValues(ctx, header, id)
 	if DebugWalk {
 		fmt.Printf("Walking page %v %v\n", id, header.DebugString())
