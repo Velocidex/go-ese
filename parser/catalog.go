@@ -168,52 +168,60 @@ func (self *Table) tagToRecord(value *Value, header *PageHeader) *ordereddict.Di
 						ParseUint64(reader, offset)))
 				}
 
-			case "DateTime":
-				if column.SpaceUsage == 8 {
-					switch column.Flags {
-					case 1:
-						// A more modern way of encoding
-						result.Set(column.Name, WinFileTime64(reader, offset))
+		case "DateTime":
+			if column.SpaceUsage == 8 {
+				switch column.Flags {
+				case 1:
+					// A more modern way of encoding
+					result.Set(column.Name, WinFileTime64(reader, offset))
 
-					case 0:
-						// Some hair brained time serialization method
-						// https://docs.microsoft.com/en-us/windows/win32/extensible-storage-engine/jet-coltyp
+				case 0:
+					// The Flags=0 path is ambiguous: some applications
+					// (e.g. SRUM) store genuine OLE variant doubles while
+					// others (e.g. ADCS CA) store Windows FILETIMEs in the
+					// same column type with the same Flags value.
+					//
+					// These two encodings are distinguishable by inspecting
+					// the raw value as a float64:
+					//   - A valid OLE double for any date 1900-2100 produces
+					//     a float64 in the range [2.0, ~73050]. This is a
+					//     normal IEEE 754 number with a high byte of 0x40.
+					//   - A valid FILETIME for any date 1970-2100 produces
+					//     a subnormal float64 on the order of 10^-299 when
+					//     the bytes are misread as a double. This is because
+					//     FILETIME integers (~1.3e17) have their significant
+					//     bits in positions that map to the mantissa of a
+					//     subnormal double. High byte is 0x01 or lower.
+					//   - Zero (unset field) produces 0.0 in both cases.
+					//
+					// Threshold: if float64(raw_bytes) > 1.0 it is a valid
+					// OLE double. Otherwise treat it as a Windows FILETIME.
+					// The gap between the two ranges is many orders of
+					// magnitude so there is no ambiguity.
+					value_int := ParseUint64(reader, offset)
+					days_since_1900 := math.Float64frombits(value_int)
 
-						value_int := ParseUint64(reader, offset)
-						days_since_1900 := math.Float64frombits(value_int)
-
-						// In python time.mktime((1900,1,1,0,0,0,0,365,0))
-
+					if days_since_1900 > 1.0 {
+						// Genuine OLE variant double encoding.
 						// From https://docs.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-varianttimetosystemtime
-						// A variant time is stored as an 8-byte real
-						// value (double), representing a date between
-						// January 1, 100 and December 31, 9999,
-						// inclusive. The value 2.0 represents January
-						// 1, 1900; 3.0 represents January 2, 1900,
-						// and so on. Adding 1 to the value increments
-						// the date by a day. The fractional part of
-						// the value represents the time of
-						// day. Therefore, 2.5 represents noon on
-						// January 1, 1900; 3.25 represents 6:00
-						// A.M. on January 2, 1900, and so
-						// on. Negative numbers represent the dates
-						// prior to December 30, 1899.
 						result.Set(column.Name,
 							time.Unix(int64(
 								days_since_1900*24*60*60)+
-
 								// Number of Sec between 1900 and 1970
 								-2208988800-
-
 								// Jan 1 1900 is actually value of 2
 								// days so correct for it here.
 								2*24*60*60, 0).UTC())
-
-					default:
-						// We have no idea
-						result.Set(column.Name, ParseUint64(reader, offset))
+					} else {
+						// Windows FILETIME encoding (e.g. ADCS CA databases).
+						result.Set(column.Name, WinFileTime64(reader, offset))
 					}
+
+				default:
+					// We have no idea
+					result.Set(column.Name, ParseUint64(reader, offset))
 				}
+			}
 
 			case "Long Text", "Text":
 				if column.SpaceUsage < 2000 {
@@ -396,30 +404,36 @@ func (self *Table) tagToRecord(value *Value, header *PageHeader) *ordereddict.Di
 						}))
 					}
 
-				case "DateTime":
-					if column.SpaceUsage == 8 {
-						result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
-							switch column.Flags {
-							case 1:
-								// A more modern way of encoding
-								return WinFileTime64Bin(bytes)
+			case "DateTime":
+				if column.SpaceUsage == 8 {
+					result.Set(column.Name, self.ParseTaggedValueWithPrimitiveDecoder(self.ctx, buf, func(bytes []byte) any {
+						switch column.Flags {
+						case 1:
+							// A more modern way of encoding
+							return WinFileTime64Bin(bytes)
 
-							case 0:
-								// Some hair brained time serialization method
-								// https://docs.microsoft.com/en-us/windows/win32/extensible-storage-engine/jet-coltyp
+						case 0:
+							// Same self-discriminating logic as the fixed
+							// section: inspect the raw bytes as a float64.
+							// OLE doubles for valid dates produce values > 1.0.
+							// Windows FILETIMEs produce subnormal floats < 1e-295.
+							value_int := binary.LittleEndian.Uint64(bytes)
+							days_since_1900 := math.Float64frombits(value_int)
 
-								value_int := binary.LittleEndian.Uint64(bytes)
-								days_since_1900 := math.Float64frombits(value_int)
-
-								// In python time.mktime((1900,1,1,0,0,0,0,365,0))
+							if days_since_1900 > 1.0 {
+								// Genuine OLE variant double
 								return time.Unix(int64(days_since_1900*24*60*60)+
 									-2208988800, 0).UTC()
-							default:
-								// We have no idea
-								return binary.LittleEndian.Uint64(bytes)
 							}
-						}))
-					}
+							// Windows FILETIME
+							return WinFileTime64Bin(bytes)
+
+						default:
+							// We have no idea
+							return binary.LittleEndian.Uint64(bytes)
+						}
+					}))
+				}
 
 				case "Long long", "Currency":
 					if column.SpaceUsage == 8 {
