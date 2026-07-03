@@ -82,24 +82,37 @@ func GetPageValues(ctx *ESEContext, header *PageHeader, id int64) []*Value {
 	// Tags are written from the end of the page. Sizeof(Tag) = 4
 	offset := ctx.PageSize + header.Offset - 4
 
-	// Skip the external value tag because it is fetched using a
-	// dedicated call to PageHeader.ExternalValue()
-	offset -= 4
-
-	available_tags := header.AvailablePageTag()
+	raw_tags := header.AvailablePageTag()
 	var largest_value_offset int64
 
-	/*  https://github.com/libyal/libesedb/issues/78
-
-	In the 32KiB page format the upper 4 bits of the available page tag
-	are reserved (ctagReserved) and the lower 12 bits contain the
-	actual number of page tags
-	*/
-	if ctx.PageSize >= 32768 {
-		available_tags &= 0x0fff
+	// PGHDR.itagState packs the real tag count (low 12 bits,
+	// itagMicFree) and the count of reserved tags at the start of
+	// the page (next 3 bits, ctagReserved - normally just the
+	// external header tag, but CPAGE supports up to 7). Legacy
+	// pages don't set ctagReserved, in which case there is always
+	// exactly one reserved tag. Ordinary (non-reserved) tags are
+	// indexed right after the reserved ones, so we must skip
+	// ctagReserved tag slots, not just one, before reading them.
+	// https://github.com/microsoft/Extensible-Storage-Engine/blob/main/dev/ese/src/inc/cpage.hxx
+	// https://github.com/libyal/libesedb/issues/78
+	itag_mic_free := raw_tags & 0x0fff
+	ctag_reserved := (raw_tags >> 12) & 0x7
+	if ctag_reserved == 0 {
+		ctag_reserved = 1
 	}
 
-	for tag_count := available_tags - 1; tag_count > 0; tag_count-- {
+	// Handle the case where ctag_reserved lies and is larger than the
+	// total number of used tags - avoid an unsigned underflow below.
+	if ctag_reserved > itag_mic_free {
+		ctag_reserved = itag_mic_free
+	}
+
+	// Skip the reserved tag slots (the external value tag, and
+	// potentially more) because the external value is fetched using
+	// a dedicated call to PageHeader.ExternalValue().
+	offset -= 4 * int64(ctag_reserved)
+
+	for tag_count := itag_mic_free - ctag_reserved; tag_count > 0; tag_count-- {
 		// Handle the case where available_tags lies and is way too
 		// large. The tags are stored in the end of the page and go
 		// backwards but they can not overlap the values which are
