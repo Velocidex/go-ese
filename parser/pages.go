@@ -113,7 +113,7 @@ func GetPageValues(ctx *ESEContext, header *PageHeader, id int64) []*Value {
 	offset -= 4 * int64(ctag_reserved)
 
 	for tag_count := itag_mic_free - ctag_reserved; tag_count > 0; tag_count-- {
-		// Handle the case where available_tags lies and is way too
+		// Handle the case where itag_mic_free lies and is way too
 		// large. The tags are stored in the end of the page and go
 		// backwards but they can not overlap the values which are
 		// stored from the start of the page and go forward. So if the
